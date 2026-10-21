@@ -10,7 +10,8 @@
   }
 
   html,
-  body {
+  body,
+  #root {
     margin: 0;
     padding: 0;
     width: 100%;
@@ -22,6 +23,45 @@
     -webkit-user-select: none;
     touch-action: none;
   }
+}
+
+/* Full-width 360 viewer container reset */
+#viewer,
+#pano,
+.panorama-container,
+.viewer-container {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* Floor Navigation (Standardized Straight Alignment & Consistent Layout) */
+.floor-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 6px 12px;
+  box-sizing: border-box;
+}
+
+.floor-item .floor-icon {
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floor-item .floor-label {
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+  line-height: 1.4;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -42,3 +82,4 @@
 .transition-cursor:active {
   cursor: grabbing;
 }
+

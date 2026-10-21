@@ -28,8 +28,8 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
     return directions[index];
   };
 
-  const compassSize = 130;
-  const radius = 48;
+  const compassSize = 72;
+  const radius = 25;
   const center = compassSize / 2;
 
   return (
@@ -40,16 +40,16 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
           width={compassSize}
           height={compassSize}
           viewBox={`0 0 ${compassSize} ${compassSize}`}
-          className="filter drop-shadow-[0_6px_20px_rgba(0,0,0,0.6)]"
+          className="filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
         >
           {/* Outer Ring Background */}
           <circle
             cx={center}
             cy={center}
-            r={radius + 8}
-            fill="rgba(3, 36, 27, 0.85)"
+            r={radius + 5}
+            fill="rgba(3, 36, 27, 0.88)"
             stroke="rgba(245, 158, 11, 0.35)"
-            strokeWidth="1.5"
+            strokeWidth="1.2"
             className="backdrop-blur-md"
           />
 
@@ -57,7 +57,7 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
           {Array.from({ length: 24 }).map((_, i) => {
             const angle = (i * 15 * Math.PI) / 180;
             const isMajor = i % 6 === 0;
-            const tickLength = isMajor ? 6 : 3;
+            const tickLength = isMajor ? 3.5 : 2;
             const x1 = center + Math.sin(angle) * (radius - tickLength);
             const y1 = center - Math.cos(angle) * (radius - tickLength);
             const x2 = center + Math.sin(angle) * radius;
@@ -70,8 +70,8 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                stroke={isMajor ? "rgba(245, 158, 11, 0.6)" : "rgba(16, 185, 129, 0.3)"}
-                strokeWidth={isMajor ? 1.5 : 1}
+                stroke={isMajor ? "rgba(245, 158, 11, 0.65)" : "rgba(16, 185, 129, 0.35)"}
+                strokeWidth={isMajor ? 1.2 : 0.8}
               />
             );
           })}
@@ -99,10 +99,10 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
                   <circle
                     cx={x}
                     cy={y}
-                    r={isActive ? 8 : 6}
+                    r={isActive ? 4.5 : 3.5}
                     fill="none"
                     stroke={isActive ? "#fbbf24" : "rgba(245, 158, 11, 0.6)"}
-                    strokeWidth="1.5"
+                    strokeWidth="1"
                     className={isActive ? "animate-pulse-subtle" : ""}
                   />
                 )}
@@ -110,9 +110,9 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
                 <circle
                   cx={x}
                   cy={y}
-                  r={isActive ? 4.5 : isApproaching ? 3.5 : 2.5}
+                  r={isActive ? 2.8 : isApproaching ? 2.2 : 1.6}
                   fill={isActive ? "#fbbf24" : isApproaching ? "#f59e0b" : "rgba(16, 185, 129, 0.7)"}
-                  className="transition-all duration-150 hover:r-[5px] hover:fill-[#fbbf24]"
+                  className="transition-all duration-150 hover:r-[3.5px] hover:fill-[#fbbf24]"
                 />
               </g>
             );
@@ -125,26 +125,26 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
           >
             {/* North Arrow Needle */}
             <polygon
-              points={`${center},${center - radius + 7} ${center - 4},${center - 8} ${center + 4},${center - 8}`}
+              points={`${center},${center - radius + 3.5} ${center - 2.5},${center - 4} ${center + 2.5},${center - 4}`}
               fill="#fbbf24"
-              className="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]"
+              className="filter drop-shadow-[0_0_6px_rgba(245,158,11,0.9)]"
             />
             {/* South Tail */}
             <polygon
-              points={`${center},${center + radius - 7} ${center - 3},${center + 8} ${center + 3},${center + 8}`}
-              fill="rgba(16, 185, 129, 0.4)"
+              points={`${center},${center + radius - 3.5} ${center - 2},${center + 4} ${center + 2},${center + 4}`}
+              fill="rgba(16, 185, 129, 0.45)"
             />
             {/* Center Pivot */}
-            <circle cx={center} cy={center} r={3} fill="#ffffff" />
+            <circle cx={center} cy={center} r={1.8} fill="#ffffff" />
           </g>
         </svg>
 
         {/* Central Azimuth Readout Badge */}
-        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#03241b]/90 border border-amber-500/40 backdrop-blur-md shadow-[0_4px_16px_rgba(0,0,0,0.5)] text-[11px] font-mono whitespace-nowrap text-amber-100">
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#03241b]/95 border border-amber-500/40 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.5)] text-[9px] font-mono whitespace-nowrap text-amber-100">
           <span className="text-amber-300 font-bold">{getCardinal(azimuth)}</span>
           <span className="text-emerald-500/50">|</span>
           <span>{Math.round(azimuth)}°</span>
-          <span className="text-emerald-300/60 text-[10px]">({String(displayFrame).padStart(3, "0")})</span>
+          <span className="text-emerald-300/60 text-[8px]">({String(displayFrame).padStart(3, "0")})</span>
         </div>
       </div>
     </div>

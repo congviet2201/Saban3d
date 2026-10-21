@@ -58,7 +58,7 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <main className="relative w-screen h-screen bg-[#021712] overflow-hidden select-none flex flex-col justify-between">
+    <main className="relative w-full h-full min-h-screen bg-[#021712] overflow-hidden select-none flex flex-col justify-between">
       {/* Top Header & Controls */}
       <ControlBar
         displayFrame={state.displayFrame}
@@ -112,8 +112,8 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Bottom Floating Control Deck: 360° Compass & Anchor Quick Jump */}
-      <div className="absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-4 px-4 pointer-events-none select-none">
+      {/* Bottom Floating Control Deck: Compact 360° Compass & Anchor Quick Jump */}
+      <div className="absolute bottom-3 left-0 right-0 z-20 flex flex-col items-center gap-2 px-4 pointer-events-none select-none">
         {/* Compass Dial HUD */}
         <div className="pointer-events-auto">
           <CompassIndicator

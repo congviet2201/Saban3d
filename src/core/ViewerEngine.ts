@@ -19,7 +19,6 @@ import {
 
 export type StateListener = (state: ViewerEngineState) => void;
 
-const BACKGROUND = "#021712";
 const PIXELS_PER_FRAME = 3.5;
 
 /**
@@ -88,7 +87,7 @@ export class ViewerEngine {
     this.detach();
 
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d", { alpha: false });
+    this.ctx = canvas.getContext("2d", { alpha: true });
 
     this.loader = new FrameLoader({
       maxHqCache: this.maxHqCache,
@@ -158,18 +157,14 @@ export class ViewerEngine {
     const rect = this.canvas.getBoundingClientRect();
     const containerWidth = rect.width;
     const containerHeight = rect.height;
-    const aspect = 16 / 9;
 
-    let drawWidth = containerWidth;
-    let drawHeight = containerWidth / aspect;
+    // Full-bleed expansion (cover fit) — expands entire image to eliminate side margins
+    const scale = Math.max(containerWidth / 1920, containerHeight / 1080);
+    const drawWidth = Math.round(1920 * scale);
+    const drawHeight = Math.round(1080 * scale);
 
-    if (drawHeight > containerHeight) {
-      drawHeight = containerHeight;
-      drawWidth = containerHeight * aspect;
-    }
-
-    const left = (containerWidth - drawWidth) / 2;
-    const top = (containerHeight - drawHeight) / 2;
+    const left = Math.round((containerWidth - drawWidth) / 2);
+    const top = Math.round((containerHeight - drawHeight) / 2);
 
     return { left, top, width: drawWidth, height: drawHeight, containerWidth, containerHeight };
   }
@@ -328,17 +323,14 @@ export class ViewerEngine {
     const srcHeight = "naturalHeight" in image ? image.naturalHeight : image.height;
     if (!srcWidth || !srcHeight) return;
 
-    // "contain" fit, centered
-    const scale = Math.min(canvasWidth / srcWidth, canvasHeight / srcHeight);
+    // Full-bleed fit, centered — expands entire image to eliminate side margins
+    const scale = Math.max(canvasWidth / srcWidth, canvasHeight / srcHeight);
     const drawWidth = Math.round(srcWidth * scale);
     const drawHeight = Math.round(srcHeight * scale);
     const offsetX = Math.round((canvasWidth - drawWidth) / 2);
     const offsetY = Math.round((canvasHeight - drawHeight) / 2);
 
-    if (offsetX > 0 || offsetY > 0) {
-      ctx.fillStyle = BACKGROUND;
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    }
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
     const moving = this.isDragging || this.isSnapping;
     ctx.imageSmoothingEnabled = true;
@@ -357,8 +349,7 @@ export class ViewerEngine {
     if (this.canvas.width !== displayWidth || this.canvas.height !== displayHeight) {
       this.canvas.width = displayWidth;
       this.canvas.height = displayHeight;
-      this.ctx.fillStyle = BACKGROUND;
-      this.ctx.fillRect(0, 0, displayWidth, displayHeight);
+      this.ctx.clearRect(0, 0, displayWidth, displayHeight);
       // Resizing clears the canvas -> redraw synchronously to avoid a blank flash.
       this.needsRender = true;
       this.forceRedraw = true;

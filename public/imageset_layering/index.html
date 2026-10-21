@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trình xem 360°</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Nền mờ lấy từ chính khung đang xem (tạo hiệu ứng kính) -->
+    <img id="backdrop" class="backdrop" alt="" aria-hidden="true">
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- Danh sách lớp tầng -->
+    <aside class="glass panel-floors">
+      <div class="panel-head">
+        <span>Lớp tầng</span>
+        <span class="panel-head-hint" id="hoverHint">—</span>
+      </div>
+      <ul id="floorList" class="floor-list"></ul>
+      <p class="panel-note">Nhấp vào một tầng trên ảnh để chạy chức năng của tầng đó.</p>
+    </aside>
+
+    <!-- Khung nhìn -->
+    <main class="stage-wrap">
+      <div id="stage">
+        <canvas id="viewer" width="1920" height="1080"></canvas>
+        <div id="loader">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="loaderText">Đang tải…</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Điều khiển -->
+    <footer class="glass panel-controls">
+      <button id="btnPrev" class="icon-btn" aria-label="Khung trước">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="readout">
+        <span id="hudFrame">001</span>
+        <span class="sep">/</span>
+        <span id="hudTotal">120</span>
+        <span class="angle" id="hudAngle">0°</span>
+      </div>
+      <input type="range" id="frameSlider" min="0" max="119" value="0" step="1" aria-label="Chọn khung">
+      <button id="btnNext" class="icon-btn" aria-label="Khung sau">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </footer>
+
+    <div id="toast" class="glass" role="status" aria-live="polite"></div>
+
+    <div id="cursorCard" class="glass cursor-card" aria-hidden="true">
+      <span class="cursor-dot" id="cursorDot"></span>
+      <span id="cursorName"></span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
