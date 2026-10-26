@@ -29,7 +29,8 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
   // Fetch hotspots data from JSON & validate
   useEffect(() => {
     let isMounted = true;
-    fetch(dataUrl)
+    const fetchUrl = dataUrl.includes("?") ? dataUrl : `${dataUrl}?v=${Date.now()}`;
+    fetch(fetchUrl, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -86,32 +87,33 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
     return data.floorLabels.map((fl) => interpolatePointData(fl, displayFrame, data.frameCount || 120));
   }, [data, displayFrame]);
 
-  // Standardized floor label definitions in canonical building order:
-  // - Tum    (top elevation, ~0.26)
-  // - Tầng 2 (upper-mid elevation, ~0.39)
-  // - Lửng   (lower-mid elevation, ~0.52)
-  // - Tầng 1 (ground elevation, ~0.65)
+  // Standardized floor label definitions in canonical building order (top to bottom):
+  // - Floor 4 (top elevation, ~0.26)
+  // - Floor 3 (upper-mid elevation, ~0.39)
+  // - Floor 2 (lower-mid elevation, ~0.52)
+  // - Floor 1 (ground elevation, ~0.65)
   const standardizedFloors = useMemo(() => {
     const list = [
-      { key: "tum", displayName: "Tum", defaultId: "label-tang-tum", fallbackY: 0.26 },
-      { key: "2", displayName: "Tầng 2", defaultId: "label-tang-2", fallbackY: 0.39 },
-      { key: "lung", displayName: "Lửng", defaultId: "label-tang-lung", fallbackY: 0.52 },
-      { key: "1", displayName: "Tầng 1", defaultId: "label-tang-1", fallbackY: 0.65 },
+      { key: "4", floorId: 4, displayName: "4", defaultId: "label-tang-tum", fallbackY: 0.26 },
+      { key: "3", floorId: 3, displayName: "3", defaultId: "label-tang-3", fallbackY: 0.39 },
+      { key: "2", floorId: 2, displayName: "2", defaultId: "label-tang-2", fallbackY: 0.52 },
+      { key: "1", floorId: 1, displayName: "1", defaultId: "label-tang-1", fallbackY: 0.65 },
     ];
 
     return list.map((def, idx) => {
       const match = interpolatedFloorLabels.find((fl) => {
         const idLower = fl.id.toLowerCase();
-        const nameLower = fl.name.toLowerCase();
-        if (def.key === "tum") return idLower.includes("tum") || nameLower.includes("tum");
-        if (def.key === "lung") return idLower.includes("lung") || nameLower.includes("lửng") || nameLower.includes("lung");
-        if (def.key === "2") return idLower.includes("2") || nameLower.includes("2");
-        if (def.key === "1") return idLower.includes("1") || nameLower.includes("1");
+        if (def.key === "4") return idLower.includes("4") || idLower.includes("tum");
+        if (def.key === "3") return idLower.includes("3");
+        if (def.key === "2") return idLower.includes("2") || idLower.includes("lung");
+        if (def.key === "1") return idLower.includes("1");
         return false;
       });
 
       return {
         id: match ? match.id : def.defaultId,
+        key: def.key,
+        floorId: def.floorId,
         displayName: def.displayName,
         visible: match ? match.visible : true,
         opacity: match ? match.opacity : 1,
@@ -134,9 +136,12 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
   const ITEM_HEIGHT_PX = 38;
   const navRightRatio = NAV_LEFT_RATIO + NAV_WIDTH_PX / width;
 
+  // Mandatory Frame 10 enforcement: Point hotspots visible exclusively on Frame 10
+  const isFrame10 = displayFrame === 10;
+
   return (
     <div
-      className="absolute overflow-hidden pointer-events-none select-none transition-opacity duration-200"
+      className="absolute pointer-events-none select-none transition-opacity duration-200 z-[20] overflow-visible"
       style={{
         left: `${left}px`,
         top: `${top}px`,
@@ -151,68 +156,73 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
         className="w-full h-full absolute inset-0 overflow-visible"
         style={{ pointerEvents: "none" }}
       >
-        {/* 1. Floor Zone Polygons — transparent click targets */}
+        {/* 1. Floor Zone Polygons — rendered visually transparent, pointer-events none so authoritative canvas pixel masks handle 120-frame hover */}
         {interpolatedFloors.map((floor) => {
           if (!floor.visible || floor.opacity <= 0.05 || !floor.points || floor.points.length < 3) return null;
           const pointsString = floor.points.map((pt) => `${pt[0]},${pt[1]}`).join(" ");
-          const isInteractive = !isDragging && floor.visible && floor.opacity > 0.05;
-          const labelId = `label-${floor.id}`;
 
           return (
             <polygon
               key={floor.id}
               points={pointsString}
               style={{
-                pointerEvents: isInteractive ? "auto" : "none",
-                cursor: "pointer",
+                pointerEvents: "none",
                 opacity: floor.opacity,
                 fill: "transparent",
                 stroke: "transparent",
                 strokeWidth: 0,
               }}
-              onMouseEnter={() => !isDragging && setHoveredPointId(labelId)}
-              onMouseLeave={() => setHoveredPointId(null)}
-              onClick={(e) => handleItemClick(floor.id, "floor", floor.name, e)}
             />
           );
         })}
 
-        {/* 2. Point Hotspot Leader Lines & Target Dots */}
-        {interpolatedPoints.map((pt) => {
-          if (!pt.visible || pt.opacity <= 0.05) return null;
-          const isHovered = hoveredPointId === pt.id;
+        {/* 2. Point Hotspot Leader Lines & Target Dots — Exclusively visible on Frame 10 */}
+        {isFrame10 &&
+          interpolatedPoints.map((pt) => {
+            if (!pt.visible || pt.opacity <= 0.05) return null;
+            const isHovered = hoveredPointId === pt.id;
 
-          return (
-            <g key={pt.id} style={{ opacity: pt.opacity }}>
-              <line
-                x1={pt.x}
-                y1={pt.y}
-                x2={pt.lx}
-                y2={pt.ly}
-                stroke="#ef4444"
-                strokeWidth={isHovered ? 0.003 : 0.002}
-                strokeDasharray="0.008 0.004"
-                className="transition-all duration-200"
-              />
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={isHovered ? 0.012 : 0.008}
-                fill="rgba(239, 68, 68, 0.3)"
-                className={isHovered ? "animate-pulse" : ""}
-              />
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={isHovered ? 0.006 : 0.004}
-                fill="#ef4444"
-                stroke="#ffffff"
-                strokeWidth={0.001}
-                className="transition-all duration-200"
-              />
-            </g>
-          );
-        })}
+            return (
+              <g
+                key={pt.id}
+                style={{
+                  opacity: pt.opacity,
+                  pointerEvents: isDragging ? "none" : "auto",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={() => !isDragging && setHoveredPointId(pt.id)}
+                onMouseLeave={() => setHoveredPointId(null)}
+                onClick={(e) => handleItemClick(pt.id, "point", pt.name, e)}
+              >
+                <line
+                  x1={pt.x}
+                  y1={pt.y}
+                  x2={pt.lx}
+                  y2={pt.ly}
+                  stroke="#ef4444"
+                  strokeWidth={isHovered ? 0.003 : 0.002}
+                  strokeDasharray="0.008 0.004"
+                  className="transition-all duration-200"
+                />
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isHovered ? 0.014 : 0.009}
+                  fill="rgba(239, 68, 68, 0.35)"
+                  className={isHovered ? "animate-pulse" : ""}
+                />
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isHovered ? 0.007 : 0.0045}
+                  fill="#ef4444"
+                  stroke="#ffffff"
+                  strokeWidth={0.0012}
+                  className="transition-all duration-200"
+                />
+              </g>
+            );
+          })}
 
         {/* 3. Floor Name Leader Lines — connecting building targets directly to standardized floor menu items */}
         {standardizedFloors.map((fl) => {
@@ -248,53 +258,54 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
 
       {/* HTML Overlay Layer */}
       <div className="absolute inset-0 pointer-events-none">
-        {/* Point Hotspot Label Cards */}
-        {interpolatedPoints.map((pt) => {
-          if (!pt.visible || pt.opacity <= 0.05) return null;
-          const isHovered = hoveredPointId === pt.id;
-          const effectiveOpacity = pt.opacity * (isDragging ? 0.5 : 1.0);
+        {/* Point Hotspot Label Cards — Exclusively visible on Frame 10 */}
+        {isFrame10 &&
+          interpolatedPoints.map((pt) => {
+            if (!pt.visible || pt.opacity <= 0.05) return null;
+            const isHovered = hoveredPointId === pt.id;
+            const effectiveOpacity = pt.opacity * (isDragging ? 0.5 : 1.0);
 
-          return (
-            <div
-              key={pt.id}
-              className="absolute transition-all duration-200"
-              style={{
-                left: `${pt.lx * 100}%`,
-                top: `${pt.ly * 100}%`,
-                transform: "translate(-50%, -50%)",
-                opacity: effectiveOpacity,
-                pointerEvents: isDragging ? "none" : "auto",
-              }}
-            >
-              <button
-                type="button"
-                onMouseEnter={() => !isDragging && setHoveredPointId(pt.id)}
-                onMouseLeave={() => setHoveredPointId(null)}
-                onClick={(e) => handleItemClick(pt.id, "point", pt.name, e)}
-                className={`
-                  flex items-center gap-2 px-3 py-1.5
-                  rounded-lg border backdrop-blur-md
-                  text-xs font-semibold whitespace-nowrap cursor-pointer
-                  transition-all duration-200
-                  ${isHovered
-                    ? "bg-red-950/90 border-red-400 text-red-100 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.7)]"
-                    : "bg-[#03241b]/95 border-red-500/60 text-red-100 shadow-[0_4px_16px_rgba(0,0,0,0.5)] hover:border-red-400 hover:scale-105"
-                  }
-                `}
+            return (
+              <div
+                key={pt.id}
+                className="absolute transition-all duration-200"
+                style={{
+                  left: `${pt.lx * 100}%`,
+                  top: `${pt.ly * 100}%`,
+                  transform: "translate(-50%, -50%)",
+                  opacity: effectiveOpacity,
+                  pointerEvents: isDragging ? "none" : "auto",
+                }}
               >
-                <span className="w-2 h-2 rounded-full bg-red-500 group-hover:bg-red-400 animate-pulse flex-none" />
-                <span>{pt.name}</span>
-              </button>
-            </div>
-          );
-        })}
+                <button
+                  type="button"
+                  onMouseEnter={() => !isDragging && setHoveredPointId(pt.id)}
+                  onMouseLeave={() => setHoveredPointId(null)}
+                  onClick={(e) => handleItemClick(pt.id, "point", pt.name, e)}
+                  className={`
+                    flex items-center gap-2 px-3 py-1.5
+                    rounded-lg border backdrop-blur-md
+                    text-xs font-semibold whitespace-nowrap cursor-pointer
+                    transition-all duration-200
+                    ${isHovered
+                      ? "bg-red-950/90 border-red-400 text-red-100 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.7)]"
+                      : "bg-[#03241b]/95 border-red-500/60 text-red-100 shadow-[0_4px_16px_rgba(0,0,0,0.5)] hover:border-red-400 hover:scale-105"
+                    }
+                  `}
+                >
+                  <span className="w-2 h-2 rounded-full bg-red-500 group-hover:bg-red-400 animate-pulse flex-none" />
+                  <span>{pt.name}</span>
+                </button>
+              </div>
+            );
+          })}
 
         {/* ── Standardized Floor Navigation Hotspots ──────────────────────
             All 4 floor hotspot labels:
-              - Tum    (top elevation, ~0.26)
-              - Tầng 2 (upper-mid elevation, ~0.39)
-              - Lửng   (lower-mid elevation, ~0.52)
-              - Tầng 1 (ground elevation, ~0.65)
+              - 4 (top elevation, ~0.26)
+              - 3 (upper-mid elevation, ~0.39)
+              - 2 (lower-mid elevation, ~0.52)
+              - 1 (ground elevation, ~0.65)
             Are ordered according to building floor hierarchy (top to bottom)
             and positioned directly at the vertical elevation of each floor,
             all aligned along the exact same left horizontal axis.
@@ -321,8 +332,54 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
               >
                 <button
                   type="button"
-                  onMouseEnter={() => !isDragging && setHoveredPointId(fl.id)}
-                  onMouseLeave={() => setHoveredPointId(null)}
+                  onMouseEnter={(e) => {
+                    if (isDragging) return;
+                    setHoveredPointId(fl.id);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", {
+                        detail: { floorId: fl.floorId, clientX: e.clientX, clientY: e.clientY },
+                      })
+                    );
+                  }}
+                  onMouseMove={(e) => {
+                    if (isDragging) return;
+                    setHoveredPointId(fl.id);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", {
+                        detail: { floorId: fl.floorId, clientX: e.clientX, clientY: e.clientY },
+                      })
+                    );
+                  }}
+                  onPointerEnter={(e) => {
+                    if (isDragging) return;
+                    setHoveredPointId(fl.id);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", {
+                        detail: { floorId: fl.floorId, clientX: e.clientX, clientY: e.clientY },
+                      })
+                    );
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDragging) return;
+                    setHoveredPointId(fl.id);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", {
+                        detail: { floorId: fl.floorId, clientX: e.clientX, clientY: e.clientY },
+                      })
+                    );
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredPointId(null);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", { detail: { floorId: null } })
+                    );
+                  }}
+                  onPointerLeave={() => {
+                    setHoveredPointId(null);
+                    window.dispatchEvent(
+                      new CustomEvent("floor:hover", { detail: { floorId: null } })
+                    );
+                  }}
                   onClick={(e) => handleItemClick(fl.id, "floorLabel", fl.displayName, e)}
                   style={{
                     opacity: effectiveOpacity,

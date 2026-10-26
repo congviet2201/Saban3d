@@ -24,7 +24,7 @@ import { ImageBounds } from "../types/viewer";
 
 // ---------- Configuration ----------
 const OVERLAY_BASE    = "/imageset_layering/overlays";
-const OVERLAY_CACHE_MAX = 10; // frames to keep in memory
+const OVERLAY_CACHE_MAX = 60; // Expanded to 60 frames to eliminate reloads and latency during rotation
 
 const HOVER_OPACITY = 0.55; // alpha when a floor is hovered
 const BASE_OPACITY  = 0;    // hidden otherwise
@@ -38,20 +38,32 @@ export interface Floor {
   name: string;
   color: string; // hex
   dir: string;   // overlay subfolder name
+  image: string; // section image path in /hover/
 }
 
 export const FLOORS: Floor[] = [
-  { id: 4, name: "Tum",    color: "#E1708A", dir: "f4" },
-  { id: 2, name: "Tầng 2", color: "#2FB98C", dir: "f2" },
-  { id: 3, name: "Lửng",   color: "#E0A93F", dir: "f3" },
-  { id: 1, name: "Tầng 1", color: "#5B8DEF", dir: "f1" },
+  { id: 4, name: "4", color: "#E1708A", dir: "f4", image: "/hover/T4.png" },
+  { id: 3, name: "3", color: "#E0A93F", dir: "f3", image: "/hover/T3.png" },
+  { id: 2, name: "2", color: "#2FB98C", dir: "f2", image: "/hover/T2.png" },
+  { id: 1, name: "1", color: "#5B8DEF", dir: "f1", image: "/hover/T1.png" },
 ];
 
 // ---------- Helpers ----------
 const pad3 = (n: number) => String(n).padStart(3, "0");
 
-function overlayUrl(dir: string, frame: number): string {
-  return `${OVERLAY_BASE}/${dir}/${pad3(frame)}.png`;
+/**
+ * Maps 1-based viewer displayFrame (1..120) to 0-indexed overlay mask file index (000..119).
+ * Background image sequence: 001.webp .. 120.webp (1-based)
+ * Overlay image sequence:    000.png  .. 119.png  (0-based)
+ * Exact mathematical alignment: overlayIndex = (displayFrame - 1) % 120
+ */
+export function displayFrameToOverlayIndex(displayFrame: number, totalFrames: number = 120): number {
+  return ((Math.round(displayFrame) - 1) % totalFrames + totalFrames) % totalFrames;
+}
+
+function overlayUrl(dir: string, displayFrame: number): string {
+  const overlayIndex = displayFrameToOverlayIndex(displayFrame);
+  return `${OVERLAY_BASE}/${dir}/${pad3(overlayIndex)}.png`;
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -132,6 +144,31 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
   useEffect(() => { imageBoundsRef.current = imageBounds; }, [imageBounds]);
   useEffect(() => { displayFrameRef.current = displayFrame; }, [displayFrame]);
 
+  // Pre-load all 4 floor section images for instant latency-free display on hover
+  useEffect(() => {
+    FLOORS.forEach((f) => {
+      const img = new Image();
+      img.src = f.image;
+    });
+  }, []);
+
+  // Synchronize hover state with external triggers (e.g. floor buttons)
+  useEffect(() => {
+    const handleFloorHoverEvent = (e: Event) => {
+      const customEv = e as CustomEvent<{ floorId: number | null; clientX?: number; clientY?: number }>;
+      if (customEv.detail) {
+        setHoveredFloor(customEv.detail.floorId ?? null);
+        if (customEv.detail.clientX != null && customEv.detail.clientY != null) {
+          setCursorPos({ x: customEv.detail.clientX, y: customEv.detail.clientY });
+        } else if (customEv.detail.floorId == null) {
+          setCursorPos(null);
+        }
+      }
+    };
+    window.addEventListener("floor:hover", handleFloorHoverEvent);
+    return () => window.removeEventListener("floor:hover", handleFloorHoverEvent);
+  }, []);
+
   // ---------- Overlay image cache (stable singleton) ----------
   const overlayCache = useMemo(() => new LruOverlayCache(OVERLAY_CACHE_MAX), []);
 
@@ -208,8 +245,7 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
   const renderOverlay = useCallback(() => {
     const overlayCanvas = overlayCanvasRef.current;
     if (!overlayCanvas) return;
-    const { left, top, width, height, containerWidth, containerHeight } =
-      imageBoundsRef.current;
+    const { left, top, width, height, containerWidth, containerHeight } = imageBounds;
     if (!width || !height) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -227,13 +263,10 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
     const hc = hitCanvas.getContext("2d", { willReadFrequently: true })!;
     hc.clearRect(0, 0, HIT_W, HIT_H);
 
-    const frame = displayFrameRef.current;
-    const ov    = getOverlays(frame, () => renderOverlay());
-    const hov   = hoveredFloorRef.current;
-    const vis   = visibleRef.current;
+    const ov = getOverlays(displayFrame, () => renderOverlay());
 
     FLOORS.forEach((f) => {
-      if (!vis[f.id]) return;
+      if (!visible[f.id]) return;
       const img = ov[f.id];
       if (!img?.complete || !img.naturalWidth) return;
 
@@ -242,7 +275,7 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
       hc.drawImage(img, 0, 0, HIT_W, HIT_H);
 
       // Visible overlay (only for hovered floor)
-      const alpha = hov === f.id ? HOVER_OPACITY : BASE_OPACITY;
+      const alpha = hoveredFloor === f.id ? HOVER_OPACITY : BASE_OPACITY;
       if (alpha <= 0) return;
       oc.globalAlpha = alpha;
       oc.drawImage(
@@ -254,20 +287,22 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
       );
     });
     oc.globalAlpha = 1;
-  }, [getOverlays]);
+  }, [displayFrame, getOverlays, hoveredFloor, imageBounds, visible]);
 
   // Trigger redraw whenever these change
   useEffect(() => {
     renderOverlay();
   }, [renderOverlay, displayFrame, imageBounds, hoveredFloor, visible]);
 
-  // Pre-warm overlay images for current + adjacent frames
+  // Pre-warm overlay images for current + adjacent frames (±3 frames window for zero-lag rotation)
   useEffect(() => {
     getOverlays(displayFrame, () => renderOverlay());
-    const prev = displayFrame === 1 ? 120 : displayFrame - 1;
-    const next = displayFrame === 120 ? 1 : displayFrame + 1;
-    getOverlays(prev);
-    getOverlays(next);
+    for (let d = 1; d <= 3; d++) {
+      const prev = ((displayFrame - 1 - d) % 120 + 120) % 120 + 1;
+      const next = ((displayFrame - 1 + d) % 120 + 120) % 120 + 1;
+      getOverlays(prev);
+      getOverlays(next);
+    }
   }, [displayFrame, getOverlays, renderOverlay]);
 
   // ---------- Pointer-event listeners on the MAIN canvas container ----------
@@ -305,6 +340,12 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
           bubbles: true,
         });
         window.dispatchEvent(event);
+        window.dispatchEvent(
+          new CustomEvent("hotspot:click", {
+            detail: { id: `tang-${hit}`, type: "floor", name: floor.name },
+            bubbles: true,
+          })
+        );
         showToast(`✔ Đã chọn: ${floor.name}`);
       }
     };
@@ -333,17 +374,52 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
     [visible, showToast]
   );
 
-  // ---------- Resolve cursor card position (keep inside viewport) ----------
+  // ---------- Resolve floor section image preview position (keep inside viewport) ----------
   const resolvedCard = useMemo(() => {
-    if (!cursorPos || hoveredFloor == null) return null;
+    if (hoveredFloor == null) return null;
     const floor = FLOORS.find((f) => f.id === hoveredFloor);
     if (!floor) return null;
-    const pad = 16;
-    let x = cursorPos.x + pad;
-    let y = cursorPos.y + pad;
-    if (x + 160 > window.innerWidth  - 8) x = cursorPos.x - 160 - pad;
-    if (y + 40  > window.innerHeight - 8) y = cursorPos.y - 40  - pad;
-    return { name: floor.name, color: floor.color, x: Math.max(8, x), y: Math.max(8, y) };
+
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1920;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 1080;
+
+    // Responsive card size: width up to 380px on desktop, scaling gracefully
+    const cardW = Math.min(380, Math.max(260, Math.round(vw * 0.28)));
+    const cardH = Math.round(cardW * (1688 / 3000));
+    const pad = 20;
+
+    let x: number;
+    let y: number;
+
+    // If hovering on right side panel (cursorPos.x > vw - 300) or cursorPos is null:
+    if (!cursorPos || cursorPos.x > vw - 300) {
+      x = vw - 262 - cardW - 24;
+      y = cursorPos ? Math.min(Math.max(72, cursorPos.y - cardH / 2), vh - cardH - 16) : 80;
+    } else {
+      x = cursorPos.x + pad;
+      y = cursorPos.y + pad;
+
+      // Flip horizontally if exceeding right edge
+      if (x + cardW > vw - 16) {
+        x = cursorPos.x - cardW - pad;
+      }
+      // Flip vertically if exceeding bottom edge
+      if (y + cardH > vh - 16) {
+        y = cursorPos.y - cardH - pad;
+      }
+    }
+
+    x = Math.max(16, Math.min(x, vw - cardW - 16));
+    y = Math.max(16, Math.min(y, vh - cardH - 16));
+
+    return {
+      image: floor.image,
+      color: floor.color,
+      x,
+      y,
+      width: cardW,
+      height: cardH,
+    };
   }, [cursorPos, hoveredFloor]);
 
   const hoveredFloorObj = hoveredFloor != null
@@ -393,7 +469,7 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
             Lớp tầng
           </span>
           <span className="text-[11px] text-white/30 tabular-nums transition-all duration-150">
-            {hoveredFloorObj ? hoveredFloorObj.name : "—"}
+            {hoveredFloorObj ? "Mặt cắt 3D" : "—"}
           </span>
         </div>
 
@@ -415,8 +491,19 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
                   !isOn ? "opacity-40" : "",
                 ].join(" ")}
                 onClick={() => toggleFloor(floor.id)}
-                onMouseEnter={() => !isDragging && setHoveredFloor(floor.id)}
-                onMouseLeave={() => setHoveredFloor(null)}
+                onMouseEnter={(e) => {
+                  if (isDragging) return;
+                  setHoveredFloor(floor.id);
+                  setCursorPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseMove={(e) => {
+                  if (isDragging) return;
+                  setCursorPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseLeave={() => {
+                  setHoveredFloor(null);
+                  setCursorPos(null);
+                }}
               >
                 {/* Swatch in 24px column */}
                 <div className="w-6 flex items-center justify-center">
@@ -461,30 +548,39 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
         </p>
       </aside>
 
-      {/* ── Cursor tooltip card ─────────────────────────────── */}
+      {/* ── Floor Section Preview Image on Hover ─────────────── */}
       {resolvedCard && (
         <div
-          className="fixed z-40 flex items-center gap-2 px-3 py-1.5 rounded-xl pointer-events-none select-none whitespace-nowrap"
+          className="fixed z-50 pointer-events-none select-none transition-all duration-200 ease-out"
           style={{
-            left: resolvedCard.x,
-            top:  resolvedCard.y,
-            background: "rgba(14,18,24,0.80)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            backdropFilter: "blur(18px)",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+            left: `${resolvedCard.x}px`,
+            top: `${resolvedCard.y}px`,
+            width: `${resolvedCard.width}px`,
           }}
           aria-hidden="true"
         >
-          <span
-            className="w-2.5 h-2.5 rounded-[3px] flex-none"
+          <div
+            className="relative rounded-2xl overflow-hidden p-1.5 transition-transform duration-200 ease-out"
             style={{
-              background: resolvedCard.color,
-              boxShadow: "0 0 0 1px rgba(255,255,255,0.25)",
+              background: "rgba(3, 36, 27, 0.55)",
+              border: "1px solid rgba(255, 255, 255, 0.22)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              boxShadow: `0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px ${resolvedCard.color}40`,
             }}
-          />
-          <span className="text-[12.5px] font-semibold text-white">
-            {resolvedCard.name}
-          </span>
+          >
+            <img
+              src={resolvedCard.image}
+              alt=""
+              className="w-full h-auto block select-none pointer-events-none"
+              style={{
+                aspectRatio: "3000 / 1688",
+                objectFit: "contain",
+                filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.5))",
+              }}
+              decoding="async"
+            />
+          </div>
         </div>
       )}
 
