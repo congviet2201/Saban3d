@@ -112,21 +112,20 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Bottom Floating Control Deck: Compact 360° Compass & Anchor Quick Jump */}
-      <div className="absolute bottom-3 left-0 right-0 z-20 flex flex-col items-center gap-2 px-4 pointer-events-none select-none">
-        {/* Compass Dial HUD */}
-        <div className="pointer-events-auto">
-          <CompassIndicator
-            currentFrame={state.currentFrame}
-            displayFrame={state.displayFrame}
-            activeAnchor={state.activeAnchor}
-            approachingAnchor={state.approachingAnchor}
-            proximityDistance={state.proximityDistance}
-            onSelectAnchor={(frame) => engine.jumpToAnchor(frame)}
-          />
-        </div>
+      {/* 360° Compass HUD (Góc trái dưới - cách mép để không mất góc UI) */}
+      <div className="absolute bottom-5 left-14 z-20 pointer-events-auto select-none">
+        <CompassIndicator
+          currentFrame={state.currentFrame}
+          displayFrame={state.displayFrame}
+          activeAnchor={state.activeAnchor}
+          approachingAnchor={state.approachingAnchor}
+          proximityDistance={state.proximityDistance}
+          onSelectAnchor={(frame) => engine.jumpToAnchor(frame)}
+        />
+      </div>
 
-        {/* 6 Predefined Anchor Viewpoints Dock */}
+      {/* 6 Predefined Anchor Viewpoints Dock (Ở giữa dưới) */}
+      <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center px-4 max-sm:pl-36 pointer-events-none select-none">
         <div className="pointer-events-auto max-w-full">
           <AnchorPills
             activeAnchor={state.activeAnchor}

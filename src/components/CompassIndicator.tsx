@@ -33,7 +33,7 @@ export const CompassIndicator: React.FC<CompassIndicatorProps> = ({
   const center = compassSize / 2;
 
   return (
-    <div className="flex flex-col items-center select-none">
+    <div className="flex flex-col items-center select-none pb-2">
       <div className="relative group">
         {/* SVG Circular Dial */}
         <svg
