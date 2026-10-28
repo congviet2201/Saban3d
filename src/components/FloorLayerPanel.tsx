@@ -129,8 +129,6 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
   const [hoveredFloor, setHoveredFloor]   = useState<number | null>(null);
   const [selectedFloor, setSelectedFloor] = useState<number | null>(null);
   const [modalFloor, setModalFloor]       = useState<Floor | null>(null);
-  const [toast, setToast]                 = useState<string | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------- Canvas refs ----------
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -188,13 +186,6 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
 
   // ---------- Overlay image cache (stable singleton) ----------
   const overlayCache = useMemo(() => new LruOverlayCache(OVERLAY_CACHE_MAX), []);
-
-  // ---------- Toast ----------
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2400);
-  }, []);
 
   // ---------- Load overlays for a frame ----------
   const getOverlays = useCallback(
@@ -405,31 +396,13 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
       canvas.removeEventListener("mouseup",      onUp as unknown as EventListener);
       if (canvas) canvas.style.cursor = "";
     };
-  }, [canvasRef, hitTest, showToast]);
-
-  // ---------- Floor toggle ----------
-  const toggleFloor = useCallback(
-    (id: number) => {
-      setVisible((prev) => {
-        const next = { ...prev, [id]: !prev[id] };
-        return next;
-      });
-      const floor = FLOORS.find((f) => f.id === id)!;
-      showToast(`${floor.title}: ${visible[id] ? "đã ẩn" : "đang hiện"}`);
-    },
-    [visible, showToast]
-  );
+  }, [canvasRef, hitTest]);
 
   // Floor to show in the small section preview
   // Displays only while actively hovering over floor 1, 2, 3, or 4
   const activePreviewFloor = hoveredFloor != null
     ? FLOORS.find((f) => f.id === hoveredFloor)
     : null;
-
-
-  const hoveredFloorObj = hoveredFloor != null
-    ? FLOORS.find((f) => f.id === hoveredFloor)
-    : (selectedFloor != null ? FLOORS.find((f) => f.id === selectedFloor) : null);
 
   // ============================================================
   // Render
@@ -455,108 +428,6 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
         }}
         aria-hidden="true"
       />
-
-      {/* ── Floor List Side Panel ───────────────────────────── */}
-      <aside
-        className={[
-          "absolute top-[72px] right-4 z-10",
-          "w-[262px]",
-          "rounded-[20px] border border-white/[0.13]",
-          "bg-black/50 backdrop-blur-2xl",
-          "shadow-[0_12px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.10)]",
-          "px-3.5 py-3.5",
-        ].join(" ")}
-        style={{ pointerEvents: "auto" }}
-      >
-        {/* Header */}
-        <div className="flex items-baseline justify-between mb-2.5">
-          <span className="text-[11px] uppercase tracking-[1.1px] text-white/55 font-semibold">
-            Lớp tầng
-          </span>
-          <span className="text-[11px] text-white/30 tabular-nums transition-all duration-150">
-            {hoveredFloorObj ? hoveredFloorObj.title : "—"}
-          </span>
-        </div>
-
-        {/* Floor rows */}
-        <ul className="list-none m-0 p-0 flex flex-col gap-1">
-          {FLOORS.map((floor) => {
-            const isOn      = visible[floor.id];
-            const isHov     = hoveredFloor === floor.id;
-            const isSel     = selectedFloor === floor.id;
-            return (
-              <li
-                key={floor.id}
-                data-floor-id={floor.id}
-                className={[
-                  "grid grid-cols-[24px_minmax(0,1fr)_34px] items-center gap-2 px-2.5 py-2 rounded-xl border cursor-pointer select-none",
-                  "transition-all duration-150",
-                  isSel
-                    ? "bg-amber-500/20 border-amber-400/50 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.25)]"
-                    : isHov
-                    ? "bg-white/10 border-white/18"
-                    : "border-transparent hover:bg-white/[0.055] hover:border-white/10",
-                  !isOn ? "opacity-40" : "",
-                ].join(" ")}
-                onClick={() => {
-                  setSelectedFloor(floor.id);
-                  setModalFloor(floor);
-                }}
-                onMouseEnter={() => {
-                  if (isDragging) return;
-                  setHoveredFloor(floor.id);
-                }}
-                onMouseLeave={() => {
-                  setHoveredFloor(null);
-                }}
-              >
-                {/* Swatch in 24px column */}
-                <div className="w-6 flex items-center justify-center">
-                  <span
-                    className="w-3 h-3 rounded-[4px] flex-none"
-                    style={{
-                      background: floor.color,
-                      boxShadow: `0 0 0 1px rgba(255,255,255,0.22), 0 0 12px ${floor.color}55`,
-                    }}
-                  />
-                </div>
-
-                {/* Name left-aligned */}
-                <span className="min-w-0 text-[13px] text-white/90 font-medium text-left truncate">
-                  {floor.title}
-                </span>
-
-                {/* Toggle switch (click toggles layer visibility) */}
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFloor(floor.id);
-                  }}
-                  className={[
-                    "relative flex-none w-[34px] h-[19px] rounded-full border cursor-pointer",
-                    "transition-colors duration-200",
-                    isOn ? "bg-white/28 border-white/18" : "bg-white/10 border-white/10",
-                  ].join(" ")}
-                  title={isOn ? "Ẩn lớp tầng này" : "Hiện lớp tầng này"}
-                >
-                  <span
-                    className={[
-                      "absolute top-[3px] w-[13px] h-[13px] rounded-full bg-white",
-                      "transition-transform duration-200",
-                      isOn ? "translate-x-[17px]" : "translate-x-[2px]",
-                    ].join(" ")}
-                  />
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Helper note */}
-        <p className="mt-2.5 mx-1 mb-0.5 text-[11px] leading-[1.5] text-white/22 select-none">
-          Rê chuột để xem trước. Nhấp để mở ảnh mặt cắt đầy đủ.
-        </p>
-      </aside>
 
       {/* ── Floor Section Preview Image on Hover ───────────────
           - Displays proportional preview of corresponding section image (T1, T2, T3, T4)
@@ -750,23 +621,6 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
           </div>
         </div>,
         document.body
-      )}
-
-      {/* ── Toast notification ──────────────────────────────── */}
-      {toast && (
-        <div
-          className="absolute bottom-[90px] left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 rounded-2xl text-[13px] font-semibold text-white pointer-events-none text-center whitespace-nowrap"
-          style={{
-            background: "rgba(14,18,24,0.78)",
-            border: "1px solid rgba(255,255,255,0.13)",
-            backdropFilter: "blur(20px)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          }}
-          role="status"
-          aria-live="polite"
-        >
-          {toast}
-        </div>
       )}
     </>
   );

@@ -136,10 +136,23 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
             if (!pt.visible || pt.opacity <= 0.05) return null;
             const isHovered = hoveredPointId === pt.id;
             const effectiveOpacity = pt.opacity * (isDragging ? 0.4 : 1.0);
-            const displayName =
-              pt.id === "ho-boi" || pt.name.toLowerCase().includes("bơi")
-                ? "Bể bơi"
-                : pt.name;
+            const getHotspotDisplayName = (id: string, name: string): string => {
+              const lower = (id + " " + name).toLowerCase();
+              if (lower.includes("ban-cong") || lower.includes("ban công") || lower.includes("balcony")) {
+                return "Ban công thượng uyển";
+              }
+              if (lower.includes("ho-boi") || lower.includes("hồ") || lower.includes("bơi") || lower.includes("pool")) {
+                return "Hồ bơi";
+              }
+              if (lower.includes("vuon") || lower.includes("vườn") || lower.includes("nhat") || lower.includes("nhật") || lower.includes("garden")) {
+                return "Vườn Nhật";
+              }
+              if (lower.includes("chinh") || lower.includes("chính") || lower.includes("vao") || lower.includes("vào") || lower.includes("entrance")) {
+                return "Lối vào chính";
+              }
+              return name;
+            };
+            const displayName = getHotspotDisplayName(pt.id, pt.name);
 
             const PILLAR_HEIGHT = 68;
 
@@ -256,11 +269,12 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
                 {/* 4. Architectural Label Card (Centered Directly Above the Pillar) */}
                 <button
                   type="button"
+                  translate="no"
                   onMouseEnter={() => !isDragging && setHoveredPointId(pt.id)}
                   onMouseLeave={() => setHoveredPointId(null)}
                   onClick={(e) => handleItemClick(pt.id, "point", displayName, e)}
                   className={`
-                    absolute left-1/2 -translate-x-1/2 cursor-pointer select-none
+                    notranslate absolute left-1/2 -translate-x-1/2 cursor-pointer select-none
                     flex items-center gap-2 px-3 py-1.5 rounded-xl
                     border backdrop-blur-xl transition-all duration-200 whitespace-nowrap
                     ${isHovered
@@ -279,7 +293,10 @@ export const HotspotOverlay: React.FC<HotspotOverlayProps> = ({
                         : "bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.8)] animate-pulse"
                     }`}
                   />
-                  <span className="text-xs font-semibold tracking-wide font-sans drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                  <span
+                    translate="no"
+                    className="notranslate text-xs font-semibold tracking-wide font-sans drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+                  >
                     {displayName}
                   </span>
                 </button>

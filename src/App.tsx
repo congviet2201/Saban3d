@@ -58,7 +58,10 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <main className="relative w-full h-full min-h-screen bg-[#021712] overflow-hidden select-none flex flex-col justify-between">
+    <main
+      translate="no"
+      className="notranslate relative w-full h-full min-h-screen bg-[#021712] overflow-hidden select-none flex flex-col justify-between"
+    >
       {/* Top Header & Controls */}
       <ControlBar
         displayFrame={state.displayFrame}
