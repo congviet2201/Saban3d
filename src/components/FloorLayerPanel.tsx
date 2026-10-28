@@ -5,7 +5,9 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { createPortal } from "react-dom";
 import { ImageBounds } from "../types/viewer";
+import { X } from "lucide-react";
 
 /* ============================================================
    FloorLayerPanel – floor-hover overlay integrated into the
@@ -36,16 +38,17 @@ const HIT_H = 540;
 export interface Floor {
   id: number;
   name: string;
+  title: string;
   color: string; // hex
   dir: string;   // overlay subfolder name
   image: string; // section image path in /hover/
 }
 
 export const FLOORS: Floor[] = [
-  { id: 4, name: "4", color: "#E1708A", dir: "f4", image: "/hover/T4.png" },
-  { id: 3, name: "3", color: "#E0A93F", dir: "f3", image: "/hover/T3.png" },
-  { id: 2, name: "2", color: "#2FB98C", dir: "f2", image: "/hover/T2.png" },
-  { id: 1, name: "1", color: "#5B8DEF", dir: "f1", image: "/hover/T1.png" },
+  { id: 4, name: "4", title: "Tầng 4", color: "#E1708A", dir: "f4", image: "/hover/T4.png" },
+  { id: 3, name: "3", title: "Tầng 3", color: "#E0A93F", dir: "f3", image: "/hover/T3.png" },
+  { id: 2, name: "2", title: "Tầng 2", color: "#2FB98C", dir: "f2", image: "/hover/T2.png" },
+  { id: 1, name: "1", title: "Tầng 1", color: "#5B8DEF", dir: "f1", image: "/hover/T1.png" },
 ];
 
 // ---------- Helpers ----------
@@ -123,22 +126,25 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
   const [visible, setVisible] = useState<Record<number, boolean>>({
     1: true, 2: true, 3: true, 4: true,
   });
-  const [hoveredFloor, setHoveredFloor] = useState<number | null>(null);
-  const [cursorPos, setCursorPos]       = useState<{ x: number; y: number } | null>(null);
-  const [toast, setToast]               = useState<string | null>(null);
+  const [hoveredFloor, setHoveredFloor]   = useState<number | null>(null);
+  const [selectedFloor, setSelectedFloor] = useState<number | null>(null);
+  const [modalFloor, setModalFloor]       = useState<Floor | null>(null);
+  const [toast, setToast]                 = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------- Canvas refs ----------
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const hitCanvasRef     = useRef<HTMLCanvasElement | null>(null);
   // Stable refs for values used inside event handlers
-  const hoveredFloorRef = useRef<number | null>(null);
-  const visibleRef      = useRef(visible);
-  const isDraggingRef   = useRef(isDragging);
-  const imageBoundsRef  = useRef(imageBounds);
-  const displayFrameRef = useRef(displayFrame);
+  const hoveredFloorRef  = useRef<number | null>(null);
+  const selectedFloorRef = useRef<number | null>(null);
+  const visibleRef       = useRef(visible);
+  const isDraggingRef    = useRef(isDragging);
+  const imageBoundsRef   = useRef(imageBounds);
+  const displayFrameRef  = useRef(displayFrame);
 
   useEffect(() => { hoveredFloorRef.current = hoveredFloor; }, [hoveredFloor]);
+  useEffect(() => { selectedFloorRef.current = selectedFloor; }, [selectedFloor]);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
   useEffect(() => { isDraggingRef.current = isDragging; }, [isDragging]);
   useEffect(() => { imageBoundsRef.current = imageBounds; }, [imageBounds]);
@@ -152,22 +158,33 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
     });
   }, []);
 
-  // Synchronize hover state with external triggers (e.g. floor buttons)
+  // Synchronize hover state with external triggers
   useEffect(() => {
     const handleFloorHoverEvent = (e: Event) => {
-      const customEv = e as CustomEvent<{ floorId: number | null; clientX?: number; clientY?: number }>;
+      const customEv = e as CustomEvent<{ floorId: number | null }>;
       if (customEv.detail) {
         setHoveredFloor(customEv.detail.floorId ?? null);
-        if (customEv.detail.clientX != null && customEv.detail.clientY != null) {
-          setCursorPos({ x: customEv.detail.clientX, y: customEv.detail.clientY });
-        } else if (customEv.detail.floorId == null) {
-          setCursorPos(null);
-        }
       }
     };
     window.addEventListener("floor:hover", handleFloorHoverEvent);
     return () => window.removeEventListener("floor:hover", handleFloorHoverEvent);
   }, []);
+
+  const closeModal = useCallback(() => {
+    setModalFloor(null);
+    setSelectedFloor(null);
+  }, []);
+
+  // Close modal on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeModal]);
 
   // ---------- Overlay image cache (stable singleton) ----------
   const overlayCache = useMemo(() => new LruOverlayCache(OVERLAY_CACHE_MAX), []);
@@ -274,8 +291,9 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
       hc.globalAlpha = 1;
       hc.drawImage(img, 0, 0, HIT_W, HIT_H);
 
-      // Visible overlay (only for hovered floor)
-      const alpha = hoveredFloor === f.id ? HOVER_OPACITY : BASE_OPACITY;
+      // Visible overlay (for hovered floor or selected floor when not hovering another floor)
+      const isTarget = hoveredFloor === f.id || (hoveredFloor == null && selectedFloor === f.id);
+      const alpha = isTarget ? HOVER_OPACITY : BASE_OPACITY;
       if (alpha <= 0) return;
       oc.globalAlpha = alpha;
       oc.drawImage(
@@ -287,12 +305,12 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
       );
     });
     oc.globalAlpha = 1;
-  }, [displayFrame, getOverlays, hoveredFloor, imageBounds, visible]);
+  }, [displayFrame, getOverlays, hoveredFloor, selectedFloor, imageBounds, visible]);
 
   // Trigger redraw whenever these change
   useEffect(() => {
     renderOverlay();
-  }, [renderOverlay, displayFrame, imageBounds, hoveredFloor, visible]);
+  }, [renderOverlay, displayFrame, imageBounds, hoveredFloor, selectedFloor, visible]);
 
   // Pre-warm overlay images for current + adjacent frames (±3 frames window for zero-lag rotation)
   useEffect(() => {
@@ -306,58 +324,86 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
   }, [displayFrame, getOverlays, renderOverlay]);
 
   // ---------- Pointer-event listeners on the MAIN canvas container ----------
-  // We attach to the main canvas so we never block the drag engine's pointerdown.
-  // We listen on pointermove/pointerup at the CANVAS level (not window) to avoid
-  // interfering with other elements.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const onMove = (e: PointerEvent) => {
+    let downPos: { x: number; y: number } | null = null;
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+      downPos = { x: e.clientX, y: e.clientY };
+    };
+
+    const onMove = (e: PointerEvent | MouseEvent) => {
       if (isDraggingRef.current) {
         setHoveredFloor(null);
-        setCursorPos(null);
+        if (canvas) canvas.style.cursor = "";
         return;
       }
       const hit = hitTest(e.clientX, e.clientY);
       setHoveredFloor(hit);
-      setCursorPos(hit ? { x: e.clientX, y: e.clientY } : null);
+      if (canvas) {
+        canvas.style.cursor = hit !== null ? "pointer" : "";
+      }
     };
 
     const onLeave = (e: PointerEvent) => {
       if ((e as PointerEvent).pointerType === "touch") return;
       setHoveredFloor(null);
-      setCursorPos(null);
+      downPos = null;
+      if (canvas) canvas.style.cursor = "";
     };
 
     const onUp = (e: PointerEvent) => {
-      if (isDraggingRef.current) return;
+      const start = downPos;
+      downPos = null;
+      if (!start) return;
+
+      const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+      if (dist >= 6) return; // User dragged to rotate, not a click
+
       const hit = hitTest(e.clientX, e.clientY);
       if (hit !== null) {
-        const floor = FLOORS.find((f) => f.id === hit)!;
-        const event = new CustomEvent("floorLayer:click", {
-          detail: { id: hit, name: floor.name, color: floor.color },
-          bubbles: true,
-        });
-        window.dispatchEvent(event);
-        window.dispatchEvent(
-          new CustomEvent("hotspot:click", {
-            detail: { id: `tang-${hit}`, type: "floor", name: floor.name },
-            bubbles: true,
-          })
-        );
-        showToast(`✔ Đã chọn: ${floor.name}`);
+        const floor = FLOORS.find((f) => f.id === hit);
+        if (floor) {
+          setSelectedFloor(floor.id);
+          setModalFloor(floor);
+          window.dispatchEvent(
+            new CustomEvent("floorLayer:click", {
+              detail: { id: hit, name: floor.name, title: floor.title, color: floor.color },
+              bubbles: true,
+            })
+          );
+          window.dispatchEvent(
+            new CustomEvent("hotspot:click", {
+              detail: { id: `tang-${hit}`, type: "floor", name: floor.title },
+              bubbles: true,
+            })
+          );
+        }
       }
     };
 
-    canvas.addEventListener("pointermove",  onMove,  { passive: true });
+    canvas.addEventListener("pointerdown",  onDown,  { passive: true });
+    canvas.addEventListener("mousedown",    onDown as unknown as EventListener, { passive: true });
+    canvas.addEventListener("pointermove",  onMove as unknown as EventListener,  { passive: true });
+    canvas.addEventListener("mousemove",    onMove as unknown as EventListener, { passive: true });
     canvas.addEventListener("pointerleave", onLeave, { passive: true });
+    canvas.addEventListener("mouseleave",   onLeave as unknown as EventListener, { passive: true });
     canvas.addEventListener("pointerup",    onUp,    { passive: true });
+    canvas.addEventListener("mouseup",      onUp as unknown as EventListener, { passive: true });
 
     return () => {
-      canvas.removeEventListener("pointermove",  onMove);
+      canvas.removeEventListener("pointerdown",  onDown);
+      canvas.removeEventListener("mousedown",    onDown as unknown as EventListener);
+      canvas.removeEventListener("pointermove",  onMove as unknown as EventListener);
+      canvas.removeEventListener("mousemove",    onMove as unknown as EventListener);
       canvas.removeEventListener("pointerleave", onLeave);
+      canvas.removeEventListener("mouseleave",   onLeave as unknown as EventListener);
       canvas.removeEventListener("pointerup",    onUp);
+      canvas.removeEventListener("mouseup",      onUp as unknown as EventListener);
+      if (canvas) canvas.style.cursor = "";
     };
   }, [canvasRef, hitTest, showToast]);
 
@@ -369,62 +415,21 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
         return next;
       });
       const floor = FLOORS.find((f) => f.id === id)!;
-      showToast(`${floor.name}: ${visible[id] ? "đã ẩn" : "đang hiện"}`);
+      showToast(`${floor.title}: ${visible[id] ? "đã ẩn" : "đang hiện"}`);
     },
     [visible, showToast]
   );
 
-  // ---------- Resolve floor section image preview position (keep inside viewport) ----------
-  const resolvedCard = useMemo(() => {
-    if (hoveredFloor == null) return null;
-    const floor = FLOORS.find((f) => f.id === hoveredFloor);
-    if (!floor) return null;
+  // Floor to show in the small section preview
+  // Displays only while actively hovering over floor 1, 2, 3, or 4
+  const activePreviewFloor = hoveredFloor != null
+    ? FLOORS.find((f) => f.id === hoveredFloor)
+    : null;
 
-    const vw = typeof window !== "undefined" ? window.innerWidth : 1920;
-    const vh = typeof window !== "undefined" ? window.innerHeight : 1080;
-
-    // Responsive card size: width up to 380px on desktop, scaling gracefully
-    const cardW = Math.min(380, Math.max(260, Math.round(vw * 0.28)));
-    const cardH = Math.round(cardW * (1688 / 3000));
-    const pad = 20;
-
-    let x: number;
-    let y: number;
-
-    // If hovering on right side panel (cursorPos.x > vw - 300) or cursorPos is null:
-    if (!cursorPos || cursorPos.x > vw - 300) {
-      x = vw - 262 - cardW - 24;
-      y = cursorPos ? Math.min(Math.max(72, cursorPos.y - cardH / 2), vh - cardH - 16) : 80;
-    } else {
-      x = cursorPos.x + pad;
-      y = cursorPos.y + pad;
-
-      // Flip horizontally if exceeding right edge
-      if (x + cardW > vw - 16) {
-        x = cursorPos.x - cardW - pad;
-      }
-      // Flip vertically if exceeding bottom edge
-      if (y + cardH > vh - 16) {
-        y = cursorPos.y - cardH - pad;
-      }
-    }
-
-    x = Math.max(16, Math.min(x, vw - cardW - 16));
-    y = Math.max(16, Math.min(y, vh - cardH - 16));
-
-    return {
-      image: floor.image,
-      color: floor.color,
-      x,
-      y,
-      width: cardW,
-      height: cardH,
-    };
-  }, [cursorPos, hoveredFloor]);
 
   const hoveredFloorObj = hoveredFloor != null
     ? FLOORS.find((f) => f.id === hoveredFloor)
-    : null;
+    : (selectedFloor != null ? FLOORS.find((f) => f.id === selectedFloor) : null);
 
   // ============================================================
   // Render
@@ -446,7 +451,7 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
         className="absolute inset-0 w-full h-full select-none"
         style={{
           zIndex: 6,
-          pointerEvents: "none", // pointer events handled on main canvas above
+          pointerEvents: "none",
         }}
         aria-hidden="true"
       />
@@ -469,15 +474,16 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
             Lớp tầng
           </span>
           <span className="text-[11px] text-white/30 tabular-nums transition-all duration-150">
-            {hoveredFloorObj ? "Mặt cắt 3D" : "—"}
+            {hoveredFloorObj ? hoveredFloorObj.title : "—"}
           </span>
         </div>
 
         {/* Floor rows */}
         <ul className="list-none m-0 p-0 flex flex-col gap-1">
           {FLOORS.map((floor) => {
-            const isOn     = visible[floor.id];
-            const isHov    = hoveredFloor === floor.id;
+            const isOn      = visible[floor.id];
+            const isHov     = hoveredFloor === floor.id;
+            const isSel     = selectedFloor === floor.id;
             return (
               <li
                 key={floor.id}
@@ -485,24 +491,23 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
                 className={[
                   "grid grid-cols-[24px_minmax(0,1fr)_34px] items-center gap-2 px-2.5 py-2 rounded-xl border cursor-pointer select-none",
                   "transition-all duration-150",
-                  isHov
+                  isSel
+                    ? "bg-amber-500/20 border-amber-400/50 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+                    : isHov
                     ? "bg-white/10 border-white/18"
                     : "border-transparent hover:bg-white/[0.055] hover:border-white/10",
                   !isOn ? "opacity-40" : "",
                 ].join(" ")}
-                onClick={() => toggleFloor(floor.id)}
-                onMouseEnter={(e) => {
+                onClick={() => {
+                  setSelectedFloor(floor.id);
+                  setModalFloor(floor);
+                }}
+                onMouseEnter={() => {
                   if (isDragging) return;
                   setHoveredFloor(floor.id);
-                  setCursorPos({ x: e.clientX, y: e.clientY });
-                }}
-                onMouseMove={(e) => {
-                  if (isDragging) return;
-                  setCursorPos({ x: e.clientX, y: e.clientY });
                 }}
                 onMouseLeave={() => {
                   setHoveredFloor(null);
-                  setCursorPos(null);
                 }}
               >
                 {/* Swatch in 24px column */}
@@ -518,16 +523,21 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
 
                 {/* Name left-aligned */}
                 <span className="min-w-0 text-[13px] text-white/90 font-medium text-left truncate">
-                  {floor.name}
+                  {floor.title}
                 </span>
 
-                {/* Toggle switch */}
+                {/* Toggle switch (click toggles layer visibility) */}
                 <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFloor(floor.id);
+                  }}
                   className={[
-                    "relative flex-none w-[34px] h-[19px] rounded-full border",
+                    "relative flex-none w-[34px] h-[19px] rounded-full border cursor-pointer",
                     "transition-colors duration-200",
                     isOn ? "bg-white/28 border-white/18" : "bg-white/10 border-white/10",
                   ].join(" ")}
+                  title={isOn ? "Ẩn lớp tầng này" : "Hiện lớp tầng này"}
                 >
                   <span
                     className={[
@@ -544,44 +554,202 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
 
         {/* Helper note */}
         <p className="mt-2.5 mx-1 mb-0.5 text-[11px] leading-[1.5] text-white/22 select-none">
-          Rê chuột lên ảnh để tô sáng tầng. Nhấp để chọn.
+          Rê chuột để xem trước. Nhấp để mở ảnh mặt cắt đầy đủ.
         </p>
       </aside>
 
-      {/* ── Floor Section Preview Image on Hover ─────────────── */}
-      {resolvedCard && (
+      {/* ── Floor Section Preview Image on Hover ───────────────
+          - Displays proportional preview of corresponding section image (T1, T2, T3, T4)
+          - Pinned consistently at top-left so it never obscures the central 360 model
+          - Hides on mouse leave unless user has selected that floor
+          - Clicking opens the full-size modal
+      ──────────────────────────────────────────────────────── */}
+      {/* ── Floor Section Preview Image on Hover ───────────────
+          - Displays proportional preview of corresponding section image (T1, T2, T3, T4)
+          - Shows ONLY the small floor-section image, without a floor-number text label
+          - Positioned consistently at top-left
+          - Hides on mouse leave
+          - Clicking it immediately opens the full-size modal
+      ──────────────────────────────────────────────────────── */}
+      {!modalFloor && activePreviewFloor && (
         <div
-          className="fixed z-50 pointer-events-none select-none transition-all duration-200 ease-out"
+          className="fixed z-40 pointer-events-auto select-none transition-all duration-200 ease-out"
           style={{
-            left: `${resolvedCard.x}px`,
-            top: `${resolvedCard.y}px`,
-            width: `${resolvedCard.width}px`,
+            left: "20px",
+            top: "76px",
+            width: "min(280px, calc(100vw - 40px))",
           }}
-          aria-hidden="true"
         >
           <div
-            className="relative rounded-2xl overflow-hidden p-1.5 transition-transform duration-200 ease-out"
+            className="group relative rounded-2xl overflow-hidden p-2 transition-all duration-200 cursor-pointer hover:scale-[1.02] shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_24px_rgba(0,0,0,0.5)] border border-white/20 hover:border-amber-400/60"
             style={{
-              background: "rgba(3, 36, 27, 0.55)",
-              border: "1px solid rgba(255, 255, 255, 0.22)",
+              background: "rgba(2, 23, 18, 0.88)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
-              boxShadow: `0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px ${resolvedCard.color}40`,
             }}
+            onClick={() => {
+              setSelectedFloor(activePreviewFloor.id);
+              setModalFloor(activePreviewFloor);
+            }}
+            title="Nhấp để xem ảnh mặt cắt kích thước đầy đủ"
           >
-            <img
-              src={resolvedCard.image}
-              alt=""
-              className="w-full h-auto block select-none pointer-events-none"
-              style={{
-                aspectRatio: "3000 / 1688",
-                objectFit: "contain",
-                filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.5))",
-              }}
-              decoding="async"
-            />
+            {/* Preview Image with exact 3000x1688 proportion - ONLY the image, no text labels */}
+            <div className="relative rounded-xl overflow-hidden bg-black/40 border border-white/10">
+              <img
+                src={activePreviewFloor.image}
+                alt=""
+                className="w-full h-auto block object-contain pointer-events-none transition-transform duration-300 group-hover:scale-105"
+                style={{
+                  aspectRatio: "3000 / 1688",
+                  filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.6))",
+                }}
+                decoding="async"
+              />
+            </div>
           </div>
         </div>
+      )}
+
+      {/* ── Full-Size Floor Section Modal Overlay (Portaled to document.body for top stacking context) ──
+          - Displayed immediately on click of floor hover region, side panel, or preview card
+          - Uses actual source image (T1, T2, T3, T4)
+          - Large centered overlay above 360 viewer (z-[9999])
+          - Displays image as large as possible while preserving original aspect ratio (3000x1688)
+          - Prevents background viewer interactions while open
+          - Clear visible close button, Escape key, and backdrop click closing
+          - Quick switcher tabs to jump between all 4 floors
+      ──────────────────────────────────────────────────────── */}
+      {modalFloor && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-2xl p-2 sm:p-4 md:p-6 select-none transition-all duration-300"
+          onClick={closeModal}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Mặt cắt ${modalFloor.title}`}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-[96vw] max-h-[96vh] bg-[#021712]/95 border border-white/20 rounded-2xl md:rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.9),0_0_40px_rgba(245,158,11,0.25)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/10 bg-black/40 backdrop-blur-md">
+              {/* Left: Floor badge & title */}
+              <div className="flex items-center gap-3">
+                <span
+                  className="w-3.5 h-3.5 rounded-full shadow-[0_0_12px_currentColor]"
+                  style={{
+                    backgroundColor: modalFloor.color,
+                    color: modalFloor.color,
+                  }}
+                />
+                <div>
+                  <h2 className="text-sm sm:text-base font-semibold text-white tracking-wide m-0">
+                    Mặt cắt chi tiết: {modalFloor.title}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Center: Floor Switcher Tabs */}
+              <div className="hidden sm:flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10">
+                {FLOORS.map((f) => {
+                  const isCurrent = modalFloor.id === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFloor(f.id);
+                        setModalFloor(f);
+                      }}
+                      className={`px-3 py-1 text-xs font-medium rounded-lg transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+                        isCurrent
+                          ? "bg-white/20 text-white shadow-md border border-white/20 font-semibold"
+                          : "text-white/60 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: f.color }}
+                      />
+                      <span>{f.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right: Visible Close button */}
+              <button
+                type="button"
+                onClick={closeModal}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-white/10 hover:bg-red-500/30 text-white/90 hover:text-white border border-white/20 hover:border-red-400 transition-all duration-200 cursor-pointer shadow-lg"
+                aria-label="Đóng cửa sổ"
+                title="Đóng (ESC)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Image Body - Image displayed as large as possible preserving aspect ratio */}
+            <div className="relative flex-1 min-h-0 flex items-center justify-center p-2 sm:p-4 bg-black/50 overflow-hidden">
+              <img
+                src={modalFloor.image}
+                alt={`Mặt cắt ${modalFloor.title}`}
+                className="max-h-[82vh] max-w-full w-auto h-auto object-contain rounded-xl select-none"
+                style={{
+                  aspectRatio: "3000 / 1688",
+                  filter: "drop-shadow(0 16px 40px rgba(0,0,0,0.8))",
+                }}
+              />
+            </div>
+
+            {/* Modal Footer (Mobile tabs + helper note) */}
+            <div className="flex flex-col sm:flex-row items-center justify-between px-4 sm:px-6 py-2 border-t border-white/10 bg-black/30 text-[11px] text-white/50 gap-2">
+              {/* Mobile floor tabs */}
+              <div className="flex sm:hidden items-center justify-center gap-1.5 w-full">
+                {FLOORS.map((f) => {
+                  const isCurrent = modalFloor.id === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFloor(f.id);
+                        setModalFloor(f);
+                      }}
+                      className={`flex-1 py-1 text-xs font-medium rounded-lg transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer ${
+                        isCurrent
+                          ? "bg-white/20 text-white font-semibold"
+                          : "text-white/60 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ backgroundColor: f.color }}
+                      />
+                      <span>{f.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>Nhấp phím <kbd className="px-1.5 py-0.5 rounded bg-white/10 border border-white/15 text-white/70 font-mono text-[10px]">ESC</kbd> hoặc vùng ngoài để đóng</span>
+              </div>
+              <div className="text-white/40">
+                Ảnh mặt cắt gốc độ phân giải cao (3000 × 1688)
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Toast notification ──────────────────────────────── */}

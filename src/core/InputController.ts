@@ -10,7 +10,10 @@ export class InputController {
   private element: HTMLElement | null = null;
   private callbacks: InputCallbacks | null = null;
   private isPointerDown = false;
+  private startX = 0;
+  private startY = 0;
   private lastX = 0;
+  private hasMovedDrag = false;
   private activePointerId: number | null = null;
   private pixelsPerFrame: number = 7;
 
@@ -62,6 +65,7 @@ export class InputController {
 
     this.callbacks = null;
     this.isPointerDown = false;
+    this.hasMovedDrag = false;
     this.activePointerId = null;
   }
 
@@ -70,7 +74,10 @@ export class InputController {
 
     this.isPointerDown = true;
     this.activePointerId = e.pointerId;
+    this.startX = e.clientX;
+    this.startY = e.clientY;
     this.lastX = e.clientX;
+    this.hasMovedDrag = false;
 
     if (this.element && "setPointerCapture" in this.element) {
       try {
@@ -79,21 +86,27 @@ export class InputController {
         // Safe ignore
       }
     }
-
-    if (this.callbacks) {
-      this.callbacks.onDragStart(e.clientX, e.clientY);
-    }
   }
 
   private handlePointerMove(e: PointerEvent): void {
     if (!this.isPointerDown) return;
     if (this.activePointerId !== null && e.pointerId !== this.activePointerId) return;
 
+    const currentX = e.clientX;
+    const currentY = e.clientY;
+
+    if (!this.hasMovedDrag) {
+      const dist = Math.hypot(currentX - this.startX, currentY - this.startY);
+      if (dist < 4) return;
+      this.hasMovedDrag = true;
+      if (this.callbacks) {
+        this.callbacks.onDragStart(this.startX, this.startY);
+      }
+    }
+
     e.preventDefault();
 
-    const currentX = e.clientX;
     const deltaX = currentX - this.lastX;
-
     if (deltaX === 0) return;
 
     const direction: RotationDirection = deltaX < 0 ? "cw" : "ccw";
@@ -119,8 +132,11 @@ export class InputController {
     }
     this.activePointerId = null;
 
-    if (this.callbacks) {
-      this.callbacks.onDragEnd(e.clientX);
+    if (this.hasMovedDrag) {
+      this.hasMovedDrag = false;
+      if (this.callbacks) {
+        this.callbacks.onDragEnd(e.clientX);
+      }
     }
   }
 
