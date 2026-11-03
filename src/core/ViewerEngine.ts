@@ -43,6 +43,8 @@ export class ViewerEngine {
   private displayFrameInt = INITIAL_FRAME;
   private isDragging = false;
   private isSnapping = false;
+  private isAutoRotating = false;
+  private autoRotateSpeed = 0.25;
   private lastDirection: RotationDirection = "none";
 
   // Render State
@@ -107,6 +109,7 @@ export class ViewerEngine {
     this.inputController.attach(canvas, {
       onDragStart: () => {
         this.isDragging = true;
+        this.isAutoRotating = false;
         if (this.snapController.isSnapping) {
           this.snapController.cancel();
           this.isSnapping = false;
@@ -177,7 +180,7 @@ export class ViewerEngine {
     );
 
     const isDirectlyOnAnchor = absDistance < 0.2;
-    const isIdle = !this.isDragging && !this.isSnapping;
+    const isIdle = !this.isDragging && !this.isSnapping && !this.isAutoRotating;
 
     return {
       currentFrame: this.currentFrameFloat,
@@ -187,6 +190,7 @@ export class ViewerEngine {
       proximityDistance: absDistance,
       isDragging: this.isDragging,
       isSnapping: this.isSnapping,
+      isAutoRotating: this.isAutoRotating,
       isIdle,
       direction: this.lastDirection,
       loadedFramesCount: this.loader?.lqLoaded ?? 0,
@@ -199,6 +203,7 @@ export class ViewerEngine {
   }
 
   public jumpToAnchor(anchorFrame: number): void {
+    this.isAutoRotating = false;
     const viewpoint = ANCHOR_VIEWPOINTS.find((v) => v.frame === anchorFrame) || null;
     this.isSnapping = true;
     this.snapController.snapTo(this.currentFrameFloat, anchorFrame, viewpoint);
@@ -207,8 +212,34 @@ export class ViewerEngine {
     this.scheduleFrame();
   }
 
+  public toggleAutoRotate(): void {
+    this.isAutoRotating = !this.isAutoRotating;
+    if (this.isAutoRotating) {
+      if (this.snapController.isSnapping) {
+        this.snapController.cancel();
+        this.isSnapping = false;
+      }
+    } else {
+      this.settle();
+    }
+    this.stateDirty = true;
+    this.scheduleFrame();
+  }
+
+  public startAutoRotate(): void {
+    if (!this.isAutoRotating) {
+      this.toggleAutoRotate();
+    }
+  }
+
+  public stopAutoRotate(): void {
+    if (this.isAutoRotating) {
+      this.toggleAutoRotate();
+    }
+  }
+
   public resetView(): void {
-    this.jumpToAnchor(INITIAL_FRAME);
+    this.toggleAutoRotate();
   }
 
   // ---------------------------------------------------------------------------
@@ -221,7 +252,7 @@ export class ViewerEngine {
       this.displayFrameInt = next;
       this.needsRender = true;
       // During a snap the HQ target was already requested; don't churn the queue per frame.
-      if (this.isDragging) {
+      if (this.isDragging || this.isAutoRotating) {
         this.loader?.updateView(next, this.lastDirection, true);
       }
     }
@@ -256,7 +287,7 @@ export class ViewerEngine {
   private readonly tick = (timestamp: number): void => {
     this.rafId = null;
 
-    if (this.isDragging || this.isSnapping) {
+    if (this.isDragging || this.isSnapping || this.isAutoRotating) {
       this.frameCount++;
       const elapsed = timestamp - this.lastFpsCalcTime;
       if (elapsed >= 500) {
@@ -268,6 +299,10 @@ export class ViewerEngine {
 
     if (this.snapController.isSnapping) {
       this.snapController.tick(timestamp);
+    } else if (this.isAutoRotating && !this.isDragging) {
+      this.lastDirection = "ccw";
+      this.currentFrameFloat = wrapFrame(this.currentFrameFloat + this.autoRotateSpeed, TOTAL_FRAMES);
+      this.syncDisplayFrame();
     }
 
     if (this.needsRender) this.render();
@@ -277,8 +312,8 @@ export class ViewerEngine {
       this.emitState();
     }
 
-    // Keep looping only while an animation is running; dragging is driven by pointer events.
-    if (this.snapController.isSnapping) this.scheduleFrame();
+    // Keep looping only while an animation or auto-rotation is running
+    if (this.snapController.isSnapping || this.isAutoRotating) this.scheduleFrame();
   };
 
   private stopRaf(): void {

@@ -7,6 +7,8 @@ interface ControlBarProps {
   totalFrames: number;
   activeAnchor: AnchorViewpoint | null;
   approachingAnchor: AnchorViewpoint | null;
+  isAutoRotating?: boolean;
+  onToggleAutoRotate?: () => void;
   onResetView: () => void;
   onToggleStats: () => void;
   showStats: boolean;
@@ -17,6 +19,8 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   totalFrames,
   activeAnchor,
   approachingAnchor,
+  isAutoRotating = false,
+  onToggleAutoRotate,
   onResetView,
   onToggleStats,
   showStats,
@@ -44,7 +48,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   return (
     <header className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none select-none">
       {/* Brand Title with Logo Base */}
-      <div className="flex items-center gap-3.5 pointer-events-auto bg-[#03241b]/85 border border-amber-500/30 backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all hover:border-amber-500/50">
+      <div className="w-[280px] max-w-[calc(100vw-32px)] h-[62px] flex items-center gap-3.5 pointer-events-auto bg-[#03241b]/85 border border-amber-500/30 backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-all hover:border-amber-500/50">
         <div className="w-10 h-10 rounded-xl overflow-hidden border border-amber-400/40 bg-black/40 flex items-center justify-center shadow-[0_0_12px_rgba(245,158,11,0.25)] flex-none">
           <img
             src="/logo base.jpg"
@@ -52,7 +56,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             className="w-full h-full object-cover rounded-xl"
           />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-extrabold tracking-widest text-amber-100 uppercase font-mono">
               TAV
@@ -61,7 +65,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               360° MODEL
             </span>
           </div>
-          <p className="text-[11px] text-emerald-300/70 font-medium">
+          <p className="text-[11px] text-emerald-300/70 font-medium truncate">
             Architectural Interactive Viewer
           </p>
         </div>
@@ -98,11 +102,15 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         </button>
 
         <button
-          onClick={onResetView}
-          title="Reset to View 01"
-          className="p-2.5 rounded-xl bg-[#03241b]/85 border border-amber-500/30 text-emerald-200 hover:text-amber-300 hover:border-amber-400/50 backdrop-blur-xl transition-all shadow-lg flex items-center justify-center"
+          onClick={onToggleAutoRotate ?? onResetView}
+          title={isAutoRotating ? "Dừng xoay 360°" : "Tự động xoay 360°"}
+          className={`p-2.5 rounded-xl border backdrop-blur-xl transition-all shadow-lg flex items-center justify-center ${
+            isAutoRotating
+              ? "bg-amber-500/25 border-amber-400/60 text-amber-300 shadow-[0_0_14px_rgba(245,158,11,0.4)]"
+              : "bg-[#03241b]/85 border-amber-500/30 text-emerald-200 hover:text-amber-300 hover:border-amber-400/50"
+          }`}
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className={`w-4 h-4 transition-transform duration-700 ${isAutoRotating ? "animate-spin" : ""}`} />
         </button>
 
         <button

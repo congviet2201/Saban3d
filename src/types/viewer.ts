@@ -37,6 +37,7 @@ export interface ViewerEngineState {
   proximityDistance: number;
   isDragging: boolean;
   isSnapping: boolean;
+  isAutoRotating: boolean;
   isIdle: boolean;
   direction: RotationDirection;
   loadedFramesCount: number;

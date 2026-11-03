@@ -68,6 +68,8 @@ export const App: React.FC = () => {
         totalFrames={TOTAL_FRAMES}
         activeAnchor={state.activeAnchor}
         approachingAnchor={state.approachingAnchor}
+        isAutoRotating={state.isAutoRotating}
+        onToggleAutoRotate={() => engine.toggleAutoRotate()}
         onResetView={() => engine.resetView()}
         onToggleStats={() => setShowStats((prev) => !prev)}
         showStats={showStats}

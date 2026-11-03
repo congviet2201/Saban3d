@@ -446,15 +446,15 @@ export const FloorLayerPanel: React.FC<FloorLayerPanelProps> = ({
         <div
           className="fixed z-40 pointer-events-auto select-none transition-all duration-200 ease-out"
           style={{
-            left: "20px",
-            top: "76px",
-            width: "min(280px, calc(100vw - 40px))",
+            left: "16px",
+            top: "calc(78px + 0.5cm)",
+            width: "min(280px, calc(100vw - 32px))",
           }}
         >
           <div
-            className="group relative rounded-2xl overflow-hidden p-2 transition-all duration-200 cursor-pointer hover:scale-[1.02] shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_24px_rgba(0,0,0,0.5)] border border-white/20 hover:border-amber-400/60"
+            className="group relative rounded-2xl overflow-hidden p-2 transition-all duration-200 cursor-pointer hover:scale-[1.02] shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_24px_rgba(0,0,0,0.5)] border border-amber-500/30 hover:border-amber-400/60"
             style={{
-              background: "rgba(2, 23, 18, 0.88)",
+              background: "rgba(3, 36, 27, 0.88)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
             }}
